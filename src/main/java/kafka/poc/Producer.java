@@ -1,4 +1,4 @@
-package kafka.poc.gunjan;
+package kafka.poc;
 
 import java.util.Properties;
 import java.util.Random;

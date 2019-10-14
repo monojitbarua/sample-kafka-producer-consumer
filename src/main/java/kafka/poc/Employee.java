@@ -1,4 +1,4 @@
-package kafka.poc.gunjan;
+package kafka.poc;
 
 public class Employee {
 	
