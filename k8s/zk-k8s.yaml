@@ -1,0 +1,143 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orch-zookeeper
+  labels:
+    app: orch-zookeeper
+spec:
+  ports:
+    - port: 2888
+      name: server
+    - port: 3888
+      name: leader-election
+  clusterIP: None
+  selector:
+    app: orch-zookeeper
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: orch-zookeeper
+spec:
+  selector:
+    matchLabels:
+      app: orch-zookeeper
+      zone: bb-hsec
+  serviceName: orch-zookeeper
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: orch-zookeeper
+        zone: bb-hsec
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: "app"
+                    operator: In
+                    values:
+                    - orch-zookeeper
+              topologyKey: "kubernetes.io/hostname"
+      containers:
+        - name: orch-zookeeper
+          command: [ "sh", "-c", "zkStart.sh" ]
+          env:
+            - name: K8S_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ZOO_CLIENT_PORT
+              value: "2181"
+            - name: ZOO_4LW_COMMANDS_WHITELIST
+              value: "ruok,mntr"
+            - name: ZOO_SERVERS
+              value: server-1=orch-zookeeper-0.orch-zookeeper:2888:3888
+            - name: ZOO_TICK_TIME
+              valueFrom:
+                configMapKeyRef:
+                  name: orch-zookeeper
+                  key: tick
+            - name: ZOO_INIT_LIMIT
+              valueFrom:
+                configMapKeyRef:
+                  name: orch-zookeeper
+                  key: init
+            - name: ZOO_SYNC_LIMIT
+              valueFrom:
+                configMapKeyRef:
+                  name: orch-zookeeper
+                  key: sync
+            - name: ZOO_MAX_CLIENT_CNXNS
+              valueFrom:
+                configMapKeyRef:
+                  name: orch-zookeeper
+                  key: client.cnxns
+            - name: ZOO_AUTOPURGE_SNAPRETAINCOUNT
+              valueFrom:
+                configMapKeyRef:
+                  name: orch-zookeeper
+                  key: snap.retain
+            - name: ZOO_AUTOPURGE_PURGEINTERVAL
+              valueFrom:
+                configMapKeyRef:
+                  name: orch-zookeeper
+                  key: purge.interval
+            - name: ZOO_STANDALONE_ENABLED
+              value: "false"
+            - name: ZOO_ADMINSERVER_ENABLED
+              value: "false"
+            - name: HEAP
+              value: "2"
+          imagePullPolicy: IfNotPresent
+          image: confluent-zookeeper-orch:6b6a837
+          resources:
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+          ports:
+            - containerPort: 2181
+              name: client
+            - containerPort: 2888
+              name: server
+            - containerPort: 3888
+              name: leader-election
+          readinessProbe:
+            exec:
+              command:
+                - "zkOk.sh"
+            initialDelaySeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - "zkOk.sh"
+            initialDelaySeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: orch-zookeeper-datadir
+              mountPath: /var/lib/zookeeper
+            - name: orch-kafka-logdir
+              mountPath: /var/log/kafka
+      securityContext:
+        runAsUser: 1000
+        fsGroup: 1000
+      volumes:
+        - name: orch-kafka-logdir
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: orch-zookeeper-datadir
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi
+        storageClassName: trident-nfs

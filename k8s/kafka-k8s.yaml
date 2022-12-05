@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: orch-kafka
+  labels:
+    app: orch-kafka
+spec:
+  selector:
+    matchLabels:
+      app: orch-kafka
+      zone: bb-hsec
+  serviceName: orch-kafka
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: orch-kafka
+        zone: bb-hsec
+    spec:
+      volumes:
+      - name: orch-kafka
+        configMap:
+          name: orch-kafka
+      containers:
+        - name: orch-kafka
+          command:
+            - sh
+            - -c
+            - "exec server-start.sh"
+          env:
+            - name: JMX_PORT
+              value: "9998"
+            - name: K8S_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: KAFKA_JMX_OPTS
+              value: "-Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Djava.rmi.server.hostname=$(K8S_POD_NAME).orch-kafka -Djava.net.preferIPv4Stack=true"
+            - name: KAFKA_HEAP_OPTS
+              value: "-Xms3g -Xmx3g"
+            - name: KAFKA_JVM_PERFORMANCE_OPTS
+              value: "-XX:MetaspaceSize=96m -XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35 -XX:G1HeapRegionSize=16M -XX:MinMetaspaceFreeRatio=50 -XX:MaxMetaspaceFreeRatio=80"
+            #New Relic:
+            - name: ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: new-relic
+                  key: ENV
+            - name: NEW_RELIC_APP_NAME
+              value: "Orch Kafka - C3 cluster - $(ENV)"
+            - name: NEW_RELIC_LICENSE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: new-relic
+                  key: NEW_RELIC_LICENSE_KEY
+            - name: NEW_RELIC_DISTRIBUTED_TRACING_ENABLED
+              value: "true"
+            - name: NEW_RELIC_LOG_FILE_NAME
+              value: "STDOUT"
+            - name: NEW_RELIC_LOG_LEVEL
+              value: "warn"
+            - name: NEW_RELIC_MAX_STACK_TRACE_LINES
+              value: "100"
+            - name: NEW_RELIC_SEND_DATA_ON_EXIT
+              value: "true"
+            - name: NEW_RELIC_PROXY_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: new-relic
+                  key: NEW_RELIC_PROXY_HOST
+            - name: NEW_RELIC_PROXY_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: new-relic
+                  key: NEW_RELIC_PROXY_PORT
+            - name: NEW_RELIC_PROXY_USER
+              valueFrom:
+                secretKeyRef:
+                  name: new-relic
+                  key: NEW_RELIC_PROXY_USER
+            - name: NEW_RELIC_PROXY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: new-relic
+                  key: NEW_RELIC_PROXY_PASSWORD
+          imagePullPolicy: IfNotPresent
+          image: orch-kafka:0.0.51
+          ports:
+            - containerPort: 9093
+              name: internal
+            - containerPort: 9094
+              name: external
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+            requests:
+              cpu: 500m
+              memory: 500Mi
+          volumeMounts:
+            - name: kafka-datadir
+              mountPath: /var/lib/kafka
+            - name: orch-kafka
+              mountPath: /opt/kafka/bin/override.sh
+              subPath: override.sh
+      securityContext:
+        runAsUser: 1000
+        fsGroup: 1000
+      terminationGracePeriodSeconds: 300
+  volumeClaimTemplates:
+    - metadata:
+        name: kafka-datadir
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi
+        storageClassName: trident-nfs
