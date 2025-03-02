@@ -3,3 +3,6 @@ a sample kafka producer and consumer that will produce and consume random employ
 
 # Kraft: Run kafka without zookeeper
 - [Kraft Installation Guide](kraft/install-start-without-zookeeper.md)
+
+# ui for kafka
+- [kafka-ui](kafka-ui/ui.md)
